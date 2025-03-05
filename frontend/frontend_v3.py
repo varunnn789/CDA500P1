@@ -20,6 +20,7 @@ from src.config import DATA_DIR
 from src.inference import fetch_next_hour_predictions, load_batch_of_features_from_store
 from src.plot_utils import plot_prediction
 
+# Function to convert UTC time to EST
 def convert_to_est(utc_time):
     est_tz = pytz.timezone('US/Eastern')
     return utc_time.replace(tzinfo=pytz.UTC).astimezone(est_tz)
@@ -108,6 +109,7 @@ def load_shape_data_file(data_dir, url="https://d37ci6vzurychx.cloudfront.net/mi
         print("Shapefile successfully loaded.")
     return gdf
 
+# Get current time in EST for display and processing
 current_date = convert_to_est(pd.Timestamp.now(tz="UTC"))
 st.title(f"New York Yellow Taxi Cab Demand Next Hour")
 st.header(f'{current_date.strftime("%Y-%m-%d %H:%M:%S %Z")}')
@@ -123,42 +125,63 @@ with st.spinner(text="Download shape file for taxi zones"):
 
 with st.spinner(text="Fetching batch of inference data"):
     features = load_batch_of_features_from_store(current_date)
-    features['pickup_hour'] = features['pickup_hour'].apply(convert_to_est)
+    
+    # Ensure pickup_hour exists and convert it to EST
+    if 'pickup_hour' in features.columns:
+        features['pickup_hour'] = features['pickup_hour'].apply(convert_to_est)
+    
     st.sidebar.write("Inference features fetched from the store")
     progress_bar.progress(2 / N_STEPS)
 
 with st.spinner(text="Fetching predictions"):
     predictions = fetch_next_hour_predictions()
-    predictions['pickup_hour'] = predictions['pickup_hour'].apply(convert_to_est)
+    
+    # Ensure pickup_hour exists and convert it to EST
+    if 'pickup_hour' in predictions.columns:
+        predictions['pickup_hour'] = predictions['pickup_hour'].apply(convert_to_est)
+    
+    # Check if predictions are empty and handle gracefully
+    if predictions.empty:
+        st.error("No prediction data available!")
+    
     st.sidebar.write("Model was loaded from the registry")
     progress_bar.progress(3 / N_STEPS)
 
 shapefile_path = DATA_DIR / "taxi_zones" / "taxi_zones.shp"
 
 with st.spinner(text="Plot predicted rides demand"):
-    st.subheader("Taxi Ride Predictions Map")
-    map_obj = create_taxi_map(shapefile_path, predictions)
+    
+    # Only proceed if predictions are not empty
+    if not predictions.empty:
+        st.subheader("Taxi Ride Predictions Map")
+        
+        map_obj = create_taxi_map(shapefile_path, predictions)
+        
+        if st.session_state.map_created:
+            st_folium(st.session_state.map_obj, width=800, height=600, returned_objects=[])
 
-    if st.session_state.map_created:
-        st_folium(st.session_state.map_obj, width=800, height=600, returned_objects=[])
-
-    st.subheader("Prediction Statistics")
-    col1, col2, col3 = st.columns(3)
-    with col1:
-        st.metric("Average Rides", f"{predictions['predicted_demand'].mean():.0f}")
-    with col2:
-        st.metric("Maximum Rides", f"{predictions['predicted_demand'].max():.0f}")
-    with col3:
-        st.metric("Minimum Rides", f"{predictions['predicted_demand'].min():.0f}")
-
-    st.sidebar.write("Finished plotting taxi rides demand")
-    progress_bar.progress(4 / N_STEPS)
+        st.subheader("Prediction Statistics")
+        
+        col1, col2, col3 = st.columns(3)
+        
+        with col1:
+            st.metric("Average Rides", f"{predictions['predicted_demand'].mean():.0f}")
+        
+        with col2:
+            st.metric("Maximum Rides", f"{predictions['predicted_demand'].max():.0f}")
+        
+        with col3:
+            st.metric("Minimum Rides", f"{predictions['predicted_demand'].min():.0f}")
 
 st.dataframe(predictions.sort_values("predicted_demand", ascending=False).head(10))
-top10 = predictions.sort_values("predicted_demand", ascending=False).head(10)["pickup_location_id"].to_list()
-for location_id in top10:
-    fig = plot_prediction(
-        features=features[features["pickup_location_id"] == location_id],
-        prediction=predictions[predictions["pickup_location_id"] == location_id]
-    )
-    st.plotly_chart(fig, theme="streamlit", use_container_width=True)
+
+if not predictions.empty:
+    top10 = predictions.sort_values("predicted_demand", ascending=False).head(10)["pickup_location_id"].to_list()
+    
+    for location_id in top10:
+        fig = plot_prediction(
+            features=features[features["pickup_location_id"] == location_id],
+            prediction=predictions[predictions["pickup_location_id"] == location_id]
+        )
+        
+        st.plotly_chart(fig, theme="streamlit", use_container_width=True)
