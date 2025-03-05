@@ -3,8 +3,8 @@ from pathlib import Path
 
 parent_dir = str(Path(__file__).parent.parent)
 sys.path.append(parent_dir)
-
-
+import os
+os.environ['SHAPE_RESTORE_SHX'] = 'YES'
 import pandas as pd
 import plotly.express as px
 import streamlit as st
