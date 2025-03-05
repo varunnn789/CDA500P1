@@ -31,7 +31,7 @@ def convert_to_est(utc_time):
 if "map_created" not in st.session_state:
     st.session_state.map_created = False
 
-def create_taxi_map(shapefile_path, prediction_data):
+def create_taxi_map(shapefile_path, prediction_data, selected_location=None):
     nyc_zones = gpd.read_file(shapefile_path)
     nyc_zones = nyc_zones.merge(
         prediction_data[["pickup_location_id", "predicted_demand"]],
@@ -51,13 +51,25 @@ def create_taxi_map(shapefile_path, prediction_data):
     colormap.add_to(m)
 
     def style_function(feature):
-        predicted_demand = feature["properties"].get("predicted_demand", 0)
-        return {
-            "fillColor": colormap(float(predicted_demand)),
-            "color": "black",
-            "weight": 1,
-            "fillOpacity": 0.7,
-        }
+        location_id = feature['properties']['LocationID']
+        fill_color = colormap(float(feature["properties"].get("predicted_demand", 0)))
+
+        # Highlight the selected location
+        if selected_location is not None and location_id == selected_location:
+            return {
+                "fillColor": fill_color,
+                "color": "green",  # Highlight color
+                "weight": 3,         # Thicker border
+                "fillOpacity": 0.9,   # More opaque
+            }
+        else:
+            return {
+                "fillColor": fill_color,
+                "color": "black",
+                "weight": 1,
+                "fillOpacity": 0.7,
+            }
+
 
     zones_json = nyc_zones.to_json()
     folium.GeoJson(
@@ -146,39 +158,57 @@ current_date_est = convert_to_est(current_date)
 st.title(f"New York Yellow Taxi Cab Demand Next Hour")
 st.header(f'{current_date_est.strftime("%Y-%m-%d %H:%M:%S")} EST')
 
-progress_bar = st.sidebar.header("Working Progress")
-progress_bar = st.sidebar.progress(0)
-N_STEPS = 4
+# Remove working progress messages
+# progress_bar = st.sidebar.header("Working Progress") #Remove this line
+# progress_bar = st.sidebar.progress(0)              #Remove this line
+N_STEPS = 0
 
 with st.spinner(text="Download shape file for taxi zones"):
     geo_df = load_shape_data_file(DATA_DIR)
-    st.sidebar.write("Shape file was downloaded")
-    progress_bar.progress(1 / N_STEPS)
+    # st.sidebar.write("Shape file was downloaded") #Remove this line
+    # progress_bar.progress(1 / N_STEPS)            #Remove this line
 
 with st.spinner(text="Fetching batch of inference data"):
     features = load_batch_of_features_from_store(current_date)
     if 'pickup_hour' in features.columns:
         features['pickup_hour'] = features['pickup_hour'].apply(convert_to_est)
         features['pickup_hour'] = features['pickup_hour'].dt.strftime('%Y-%m-%d %H:%M:%S')
-    st.sidebar.write("Inference features fetched from the store")
-    progress_bar.progress(2 / N_STEPS)
+    # st.sidebar.write("Inference features fetched from the store") #Remove this line
+    # progress_bar.progress(2 / N_STEPS)                            #Remove this line
 
 with st.spinner(text="Fetching predictions"):
     predictions = fetch_next_hour_predictions()
     if 'pickup_hour' in predictions.columns:
         predictions['pickup_hour'] = predictions['pickup_hour'].apply(convert_to_est)
         predictions['pickup_hour'] = predictions['pickup_hour'].dt.strftime('%Y-%m-%d %H:%M:%S')
-    st.sidebar.write("Model was loaded from the registry")
-    progress_bar.progress(3 / N_STEPS)
+    # st.sidebar.write("Model was loaded from the registry")  #Remove this line
+    # progress_bar.progress(3 / N_STEPS)                     #Remove this line
 
 shapefile_path = DATA_DIR / "taxi_zones" / "taxi_zones.shp"
+
+# Sidebar: Location selection
+with st.sidebar:
+    locations = sorted(predictions['pickup_location_id'].unique())
+    selected_location = st.selectbox("Select a location:", locations)
+    
+    # Button to remove dropdown filter
+    if st.button("Remove Dropdown Filter"):
+        selected_location = None
+
+# Filter data based on the selected location
+if selected_location:
+    filtered_predictions = predictions[predictions['pickup_location_id'] == selected_location]
+    filtered_features = features[features['pickup_location_id'] == selected_location]
+else:
+    filtered_predictions = predictions.copy()
+    filtered_features = features.copy()
 
 with st.spinner(text="Plot predicted rides demand"):
     if predictions is None or predictions.empty:
         st.warning("No prediction data available.")
     else:
         st.subheader("Taxi Ride Predictions Map")
-        map_obj = create_taxi_map(shapefile_path, predictions)
+        map_obj = create_taxi_map(shapefile_path, predictions, selected_location)
 
         if st.session_state.map_created:
             st_folium(st.session_state.map_obj, width=800, height=600, returned_objects=[])
@@ -186,37 +216,38 @@ with st.spinner(text="Plot predicted rides demand"):
         st.subheader("Prediction Statistics")
         col1, col2, col3 = st.columns(3)
         with col1:
-            st.metric("Average Rides", f"{predictions['predicted_demand'].mean():.0f}")
+            st.metric("Average Rides", f"{filtered_predictions['predicted_demand'].mean():.0f}")
         with col2:
-            st.metric("Maximum Rides", f"{predictions['predicted_demand'].max():.0f}")
+            st.metric("Maximum Rides", f"{filtered_predictions['predicted_demand'].max():.0f}")
         with col3:
-            st.metric("Minimum Rides", f"{predictions['predicted_demand'].min():.0f}")
+            st.metric("Minimum Rides", f"{filtered_predictions['predicted_demand'].min():.0f}")
 
         st.sidebar.write("Finished plotting taxi rides demand")
-        progress_bar.progress(4 / N_STEPS)
+        # progress_bar.progress(4 / N_STEPS) #REMOVED
 
-        st.dataframe(predictions.sort_values("predicted_demand", ascending=False).head(10))
-
-        # Dropdown for location selection
-        with st.sidebar:
-            locations = predictions['pickup_location_id'].unique()
-            selected_location = st.selectbox("Select a location:", locations)
+        st.dataframe(filtered_predictions.sort_values("predicted_demand", ascending=False).head(10)) #APPLYING SORTING FUNCTIONALITY
 
         # Plot line graph for selected location
-        location_data = predictions[predictions['pickup_location_id'] == selected_location]
+        location_data = filtered_predictions[filtered_predictions['pickup_location_id'] == selected_location]
         fig = go.Figure()
-        fig.add_trace(go.Scatter(x=location_data['pickup_hour'], y=location_data['predicted_demand'],
-                                 mode='lines+markers', name='Predicted Demand'))
+        if not location_data.empty:
+            fig.add_trace(go.Scatter(x=location_data['pickup_hour'], y=location_data['predicted_demand'],
+                                     mode='lines+markers', name='Predicted Demand'))
         fig.update_layout(title=f"Predicted Demand for Location {selected_location}",
                           xaxis_title="Pickup Hour",
                           yaxis_title="Predicted Demand")
         st.plotly_chart(fig, use_container_width=True)
 
         # Plot time series for top 10 locations
-        top10 = predictions.sort_values("predicted_demand", ascending=False).head(10)["pickup_location_id"].to_list()
+        top10 = filtered_predictions.sort_values("predicted_demand", ascending=False).head(10)["pickup_location_id"].to_list()
         for location_id in top10:
-            fig = plot_prediction(
-                features=features[features["pickup_location_id"] == location_id],
-                prediction=predictions[predictions["pickup_location_id"] == location_id],
-            )
-            st.plotly_chart(fig, theme="streamlit", use_container_width=True)
+            # Check if location_id exists in both features and predictions
+            if (location_id in filtered_features["pickup_location_id"].values) and \
+               (location_id in filtered_predictions["pickup_location_id"].values):
+                fig = plot_prediction(
+                    features=filtered_features[filtered_features["pickup_location_id"] == location_id],
+                    prediction=filtered_predictions[filtered_predictions["pickup_location_id"] == location_id],
+                )
+                st.plotly_chart(fig, theme="streamlit", use_container_width=True)
+            else:
+                st.warning(f"No data available for location ID: {location_id}")
