@@ -453,3 +453,137 @@ def split_time_series_data(
 #y_train = target before cutoff
 #X_test = features after cutoff
 #y_test = target after cutoff
+
+
+def fetch_batch_raw_data(
+    from_date: Union[datetime, str], to_date: Union[datetime, str]
+) -> pd.DataFrame:
+    """
+    Simulate production data by sampling historical data from 52 weeks ago (i.e., 1 year).
+
+    Args:
+        from_date (datetime or str): The start date for the data batch.
+        to_date (datetime or str): The end date for the data batch.
+
+    Returns:
+        pd.DataFrame: A DataFrame containing the simulated production data.
+    """
+    # Convert string inputs to datetime if necessary
+    if isinstance(from_date, str):
+        from_date = datetime.fromisoformat(from_date)
+    if isinstance(to_date, str):
+        to_date = datetime.fromisoformat(to_date)
+
+    # Validate input dates
+    if not isinstance(from_date, datetime) or not isinstance(to_date, datetime):
+        raise ValueError(
+            "Both 'from_date' and 'to_date' must be datetime objects or valid ISO format strings."
+        )
+    if from_date >= to_date:
+        raise ValueError("'from_date' must be earlier than 'to_date'.")
+
+    # Shift dates back by 52 weeks (1 year)
+    historical_from_date = from_date - timedelta(weeks=52)
+    historical_to_date = to_date - timedelta(weeks=52)
+
+    # Load and filter data for the historical period
+    rides_from = load_and_process_taxi_data(
+        year=historical_from_date.year, months=[historical_from_date.month]
+    )
+    rides_from = rides_from[
+        rides_from.pickup_datetime >= historical_from_date.to_datetime64()
+    ]
+
+    if historical_to_date.month != historical_from_date.month:
+        rides_to = load_and_process_taxi_data(
+            year=historical_to_date.year, months=[historical_to_date.month]
+        )
+        rides_to = rides_to[
+            rides_to.pickup_datetime < historical_to_date.to_datetime64()
+        ]
+        # Combine the filtered data
+        rides = pd.concat([rides_from, rides_to], ignore_index=True)
+    else:
+        rides = rides_from
+    # Shift the data forward by 52 weeks to simulate recent data
+    rides["pickup_datetime"] += timedelta(weeks=52)
+
+    # Sort the data for consistency
+    rides.sort_values(by=["pickup_location_id", "pickup_datetime"], inplace=True)
+
+    return rides
+
+
+
+def transform_ts_data_info_features(
+    df, feature_col="rides", window_size=12, step_size=1
+):
+    """
+    Transforms time series data for all unique location IDs into a tabular format.
+    The first `window_size` rows are used as features.
+    The process slides down by `step_size` rows at a time to create the next set of features.
+    Feature columns are named based on their hour offsets.
+
+    Parameters:
+        df (pd.DataFrame): The input DataFrame containing time series data with 'pickup_hour' column.
+        feature_col (str): The column name containing the values to use as features (default is "rides").
+        window_size (int): The number of rows to use as features (default is 12).
+        step_size (int): The number of rows to slide the window by (default is 1).
+
+    Returns:
+        pd.DataFrame: Features DataFrame with pickup_hour and location_id.
+    """
+    # Get all unique location IDs
+    location_ids = df["pickup_location_id"].unique()
+    # List to store transformed data for each location
+    transformed_data = []
+
+    # Loop through each location ID and transform the data
+    for location_id in location_ids:
+        try:
+            # Filter the data for the given location ID
+            location_data = df[df["pickup_location_id"] == location_id].reset_index(
+                drop=True
+            )
+
+            # Extract the feature column and pickup_hour as NumPy arrays
+            values = location_data[feature_col].values
+            times = location_data["pickup_hour"].values
+
+            # Ensure there are enough rows to create at least one window
+            if len(values) <= window_size:
+                raise ValueError("Not enough data to create even one window.")
+
+            # Create the tabular data using a sliding window approach
+            rows = []
+            for i in range(0, len(values) - window_size, step_size):
+                # The first `window_size` values are features
+                features = values[i : i + window_size]
+                # Get the corresponding target timestamp
+                target_time = times[i + window_size]
+                row = np.append(features, [location_id, target_time])
+                rows.append(row)
+
+            # Convert the list of rows into a DataFrame
+            feature_columns = [
+                f"{feature_col}_t-{window_size - i}" for i in range(window_size)
+            ]
+            all_columns = feature_columns + ["pickup_location_id", "pickup_hour"]
+            transformed_df = pd.DataFrame(rows, columns=all_columns)
+
+            # Append the transformed data to the list
+            transformed_data.append(transformed_df)
+
+        except ValueError as e:
+            print(f"Skipping location_id {location_id}: {str(e)}")
+
+    # Combine all transformed data into a single DataFrame
+    if not transformed_data:
+        raise ValueError(
+            "No data could be transformed. Check if input DataFrame is empty or window size is too large."
+        )
+
+    final_df = pd.concat(transformed_data, ignore_index=True)
+
+    # Return only the features DataFrame
+    return final_df
