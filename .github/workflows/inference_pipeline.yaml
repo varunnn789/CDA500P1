@@ -1,10 +1,8 @@
 name: taxi_rides_hourly_inference_pipeline
 
 on:
-  workflow_run:
-    workflows: ["taxi_rides_hourly_features_pipeline"]
-    types:
-      - completed
+  schedule:
+    - cron: '4 * * * *' # Runs every hour
   workflow_dispatch: # Allows manual triggering of the workflow
 
 jobs:
