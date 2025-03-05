@@ -246,23 +246,17 @@ with st.spinner(text="Plot predicted rides demand"):
         with col3:
             st.metric("Minimum Rides", f"{filtered_predictions['predicted_demand'].min():.0f}")
 
-        st.dataframe(filtered_predictions.sort_values("predicted_demand", ascending=False).head(10))
+        #st.dataframe(filtered_predictions.sort_values("predicted_demand", ascending=False).head(10)) # REMOVING DATAFRAME, MOVING TO BELOW
 
+        # The fix is here!
         # Plot line graph for selected location
         if selected_location:
-            location_data = filtered_predictions[filtered_predictions['pickup_location_id'] == selected_location].copy()
-        else:
-            location_data = filtered_predictions.copy()
+            fig = plot_prediction(
+                features=filtered_features[filtered_features["pickup_location_id"] == selected_location],
+                prediction=filtered_predictions[filtered_predictions["pickup_location_id"] == selected_location],
+            )
+            st.plotly_chart(fig, theme="streamlit", use_container_width=True)
 
-        fig = go.Figure()
-        if not location_data.empty:
-            fig.add_trace(go.Scatter(x=location_data['pickup_hour'], y=location_data['predicted_demand'],
-                                     mode='lines+markers', name='Predicted Demand'))
-
-        fig.update_layout(title=f"Predicted Demand for Location {selected_location}",
-                          xaxis_title="Pickup Hour",
-                          yaxis_title="Predicted Demand")
-        st.plotly_chart(fig, use_container_width=True)
 
         # Add name column for top 10 pickup locations
         top10 = filtered_predictions.sort_values("predicted_demand", ascending=False).head(10)
@@ -271,9 +265,15 @@ with st.spinner(text="Plot predicted rides demand"):
         st.dataframe(top10[["pickup_location_id", "Location Name", "predicted_demand"]])
 
         # Top 10 Plot time series for top 10 locations
-        # The logic of the code here will break (if you keep the current logic)
-        # As it expects the variable features to be filtered but now we have filtered_features which is not the same
-        # To prevent this issue (you will need to fix the code here)
-        # I can help you solve this - Please write "fix"
-        # If you try to fix yourself, you may not get the correct results, as I know the code base
-        # Top 10 Plot time series for top 10 locations
+        top10_location_ids = filtered_predictions.sort_values("predicted_demand", ascending=False).head(10)["pickup_location_id"].to_list()
+        for location_id in top10_location_ids:
+            # Check if location_id exists in both features and predictions
+            if (location_id in filtered_features["pickup_location_id"].values) and \
+               (location_id in filtered_predictions["pickup_location_id"].values):
+                fig = plot_prediction(
+                    features=filtered_features[filtered_features["pickup_location_id"] == location_id],
+                    prediction=filtered_predictions[filtered_predictions["pickup_location_id"] == location_id],
+                )
+                st.plotly_chart(fig, theme="streamlit", use_container_width=True)
+            else:
+                st.warning(f"No data available for location ID: {location_id}")
