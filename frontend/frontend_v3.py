@@ -1,5 +1,6 @@
 import sys
 from pathlib import Path
+import zipfile
 import os
 import folium
 import geopandas as gpd
@@ -8,7 +9,8 @@ import requests
 import streamlit as st
 from branca.colormap import LinearColormap
 from streamlit_folium import st_folium
-import zipfile
+from datetime import datetime
+import pytz
 
 parent_dir = str(Path(__file__).parent.parent)
 sys.path.append(parent_dir)
@@ -17,6 +19,10 @@ os.environ['SHAPE_RESTORE_SHX'] = 'YES'
 from src.config import DATA_DIR
 from src.inference import fetch_next_hour_predictions, load_batch_of_features_from_store
 from src.plot_utils import plot_prediction
+
+def convert_to_est(utc_time):
+    est_tz = pytz.timezone('US/Eastern')
+    return utc_time.replace(tzinfo=pytz.UTC).astimezone(est_tz)
 
 if "map_created" not in st.session_state:
     st.session_state.map_created = False
@@ -102,9 +108,9 @@ def load_shape_data_file(data_dir, url="https://d37ci6vzurychx.cloudfront.net/mi
         print("Shapefile successfully loaded.")
     return gdf
 
-current_date = pd.Timestamp.now(tz="Etc/UTC")
+current_date = convert_to_est(pd.Timestamp.now(tz="UTC"))
 st.title(f"New York Yellow Taxi Cab Demand Next Hour")
-st.header(f'{current_date.strftime("%Y-%m-%d %H:%M:%S")}')
+st.header(f'{current_date.strftime("%Y-%m-%d %H:%M:%S %Z")}')
 
 progress_bar = st.sidebar.header("Working Progress")
 progress_bar = st.sidebar.progress(0)
@@ -117,11 +123,13 @@ with st.spinner(text="Download shape file for taxi zones"):
 
 with st.spinner(text="Fetching batch of inference data"):
     features = load_batch_of_features_from_store(current_date)
+    features['pickup_hour'] = features['pickup_hour'].apply(convert_to_est)
     st.sidebar.write("Inference features fetched from the store")
     progress_bar.progress(2 / N_STEPS)
 
 with st.spinner(text="Fetching predictions"):
     predictions = fetch_next_hour_predictions()
+    predictions['pickup_hour'] = predictions['pickup_hour'].apply(convert_to_est)
     st.sidebar.write("Model was loaded from the registry")
     progress_bar.progress(3 / N_STEPS)
 
