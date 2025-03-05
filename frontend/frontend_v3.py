@@ -198,8 +198,9 @@ with st.spinner(text="Plot predicted rides demand"):
         st.dataframe(predictions.sort_values("predicted_demand", ascending=False).head(10))
 
         # Dropdown for location selection
-        locations = predictions['pickup_location_id'].unique()
-        selected_location = st.selectbox("Select a location:", locations)
+        with st.sidebar:
+            locations = predictions['pickup_location_id'].unique()
+            selected_location = st.selectbox("Select a location:", locations)
 
         # Plot line graph for selected location
         location_data = predictions[predictions['pickup_location_id'] == selected_location]
