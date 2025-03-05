@@ -11,6 +11,10 @@ from branca.colormap import LinearColormap
 from streamlit_folium import st_folium
 from datetime import datetime
 import pytz
+import logging
+
+# Set up logging for debugging
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
 parent_dir = str(Path(__file__).parent.parent)
 sys.path.append(parent_dir)
@@ -111,11 +115,12 @@ def load_shape_data_file(data_dir, url="https://d37ci6vzurychx.cloudfront.net/mi
         print("Shapefile successfully loaded.")
     return gdf
 
-# Get current time in EST for display and processing
+# Get current time in EST for display
 current_date = pd.Timestamp.now(tz="Etc/UTC")
 current_date_est = convert_to_est(current_date)
+
 st.title(f"New York Yellow Taxi Cab Demand Next Hour")
-st.header(f'{current_date_est.strftime("%Y-%m-%d %H:%M:%S %Z")}')
+st.header(f'{current_date_est.strftime("%Y-%m-%d %H:%M:%S")} EST')
 
 progress_bar = st.sidebar.header("Working Progress")
 progress_bar = st.sidebar.progress(0)
@@ -126,27 +131,23 @@ with st.spinner(text="Download shape file for taxi zones"):
     st.sidebar.write("Shape file was downloaded")
     progress_bar.progress(1 / N_STEPS)
 
-# Get current time in EST again for fetching data
-current_date_est_fetch = convert_to_est(pd.Timestamp.now(tz="UTC"))
-
 with st.spinner(text="Fetching batch of inference data"):
-    features = load_batch_of_features_from_store(current_date_est_fetch)
+    features = load_batch_of_features_from_store(current_date)
     if 'pickup_hour' in features.columns:
-        features['pickup_hour'] = features['pickup_hour'].apply(lambda x: convert_to_est(pd.to_datetime(x)) if pd.notnull(x) else None)  # Convert only if not None
+        features['pickup_hour'] = features['pickup_hour'].apply(convert_to_est)
     st.sidebar.write("Inference features fetched from the store")
     progress_bar.progress(2 / N_STEPS)
 
 with st.spinner(text="Fetching predictions"):
     predictions = fetch_next_hour_predictions()
     if 'pickup_hour' in predictions.columns:
-        predictions['pickup_hour'] = predictions['pickup_hour'].apply(lambda x: convert_to_est(pd.to_datetime(x)) if pd.notnull(x) else None)  # Convert only if not None
+        predictions['pickup_hour'] = predictions['pickup_hour'].apply(convert_to_est)
     st.sidebar.write("Model was loaded from the registry")
     progress_bar.progress(3 / N_STEPS)
 
 shapefile_path = DATA_DIR / "taxi_zones" / "taxi_zones.shp"
 
 with st.spinner(text="Plot predicted rides demand"):
-    # Check if predictions is None or empty
     if predictions is None or predictions.empty:
         st.warning("No prediction data available.")
     else:
@@ -168,15 +169,13 @@ with st.spinner(text="Plot predicted rides demand"):
         st.sidebar.write("Finished plotting taxi rides demand")
         progress_bar.progress(4 / N_STEPS)
 
-        # Display DataFrame
         st.dataframe(predictions.sort_values("predicted_demand", ascending=False).head(10))
-
-        # Plot time series
         top10 = (
             predictions.sort_values("predicted_demand", ascending=False)
             .head(10)["pickup_location_id"]
             .to_list()
         )
+        # No time format here
         for location_id in top10:
             fig = plot_prediction(
                 features=features[features["pickup_location_id"] == location_id],
