@@ -150,19 +150,42 @@ with st.spinner(text="Fetching batch of inference data"):
 
 with st.spinner(text="Fetching predictions"):
     try:
+        # Log the start of the predictions fetch
+        logging.info("Fetching predictions started.")
+
+        # Fetch the next hour predictions
         predictions = fetch_next_hour_predictions()
+
+        # Log the predictions DataFrame (or lack thereof)
+        if predictions is None:
+            logging.info("Predictions is None.")
+        elif predictions.empty:
+            logging.info("Predictions is empty.")
+        else:
+            logging.info(f"Predictions: {predictions.head()}")
+
+        # Handle the predictions based on whether it's None or empty
         if predictions is None or predictions.empty:
             st.warning("No prediction data available.")
             logging.warning("No prediction data available from fetch_next_hour_predictions.")
+            predictions = pd.DataFrame()  # Ensure predictions is an empty DataFrame
+
         else:
+            # Process the predictions
             if 'pickup_hour' in predictions.columns:
                 predictions['pickup_hour'] = predictions['pickup_hour'].apply(lambda x: convert_to_est(pd.to_datetime(x)) if pd.notnull(x) else None)
             st.sidebar.write("Model was loaded from the registry")
             logging.info("Predictions fetched successfully.")
+
     except Exception as e:
+        # Handle any exceptions that occur during the predictions fetch
         st.error(f"Error fetching predictions: {e}")
-        predictions = pd.DataFrame()  # Assign an empty DataFrame in case of error
+        predictions = pd.DataFrame()  # Ensure predictions is an empty DataFrame
         logging.exception("Error fetching predictions.")
+
+    # Log the completion of the predictions fetch
+    logging.info("Fetching predictions completed.")
+
     progress_bar.progress(3 / N_STEPS)
 
 shapefile_path = DATA_DIR / "taxi_zones" / "taxi_zones.shp"
