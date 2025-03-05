@@ -18,3 +18,4 @@ seaborn
 streamlit
 streamlit-folium
 xgboost
+pipelines
