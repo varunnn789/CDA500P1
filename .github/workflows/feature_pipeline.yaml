@@ -2,7 +2,7 @@ name: taxi_rides_hourly_features_pipeline
 
 on:
   schedule:
-    - cron: '2 * * * *' # Runs every hour
+    - cron: '3 * * * *' # Runs every hour
   workflow_dispatch: # Allows manual triggering of the workflow
 
 jobs:
