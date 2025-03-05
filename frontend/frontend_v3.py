@@ -249,31 +249,29 @@ with st.spinner(text="Plot predicted rides demand"):
         #st.dataframe(filtered_predictions.sort_values("predicted_demand", ascending=False).head(10)) # REMOVING DATAFRAME, MOVING TO BELOW
 
         # The fix is here!
-        # Plot line graph for selected location
+        # Replace the new chart with your logic chart 
+        top10_location_ids = filtered_predictions.sort_values("predicted_demand", ascending=False).head(10)["pickup_location_id"].to_list()
         if selected_location:
-            fig = plot_prediction(
-                features=filtered_features[filtered_features["pickup_location_id"] == selected_location],
-                prediction=filtered_predictions[filtered_predictions["pickup_location_id"] == selected_location],
-            )
-            st.plotly_chart(fig, theme="streamlit", use_container_width=True)
-
-
+           fig = plot_prediction(
+                    features=filtered_features[filtered_features["pickup_location_id"] == selected_location],
+                    prediction=filtered_predictions[filtered_predictions["pickup_location_id"] == selected_location],
+                )
+           st.plotly_chart(fig, theme="streamlit", use_container_width=True)
+        else:
+           for location_id in top10_location_ids:
+           # Plot time series for top 10 locations
+                # Check if location_id exists in both features and predictions
+                if (location_id in filtered_features["pickup_location_id"].values) and \
+                   (location_id in filtered_predictions["pickup_location_id"].values):
+                    fig = plot_prediction(
+                        features=filtered_features[filtered_features["pickup_location_id"] == location_id],
+                        prediction=filtered_predictions[filtered_predictions["pickup_location_id"] == location_id],
+                    )
+                    st.plotly_chart(fig, theme="streamlit", use_container_width=True)
+                else:
+                    st.warning(f"No data available for location ID: {location_id}")
         # Add name column for top 10 pickup locations
         top10 = filtered_predictions.sort_values("predicted_demand", ascending=False).head(10)
         top10 = top10.rename(columns={"zone": "Location Name"})  # Rename 'zone' column to 'Location Name'
         st.subheader("Top 10 Pickup Locations")
         st.dataframe(top10[["pickup_location_id", "Location Name", "predicted_demand"]])
-
-        # Top 10 Plot time series for top 10 locations
-        top10_location_ids = filtered_predictions.sort_values("predicted_demand", ascending=False).head(10)["pickup_location_id"].to_list()
-        for location_id in top10_location_ids:
-            # Check if location_id exists in both features and predictions
-            if (location_id in filtered_features["pickup_location_id"].values) and \
-               (location_id in filtered_predictions["pickup_location_id"].values):
-                fig = plot_prediction(
-                    features=filtered_features[filtered_features["pickup_location_id"] == location_id],
-                    prediction=filtered_predictions[filtered_predictions["pickup_location_id"] == location_id],
-                )
-                st.plotly_chart(fig, theme="streamlit", use_container_width=True)
-            else:
-                st.warning(f"No data available for location ID: {location_id}")
