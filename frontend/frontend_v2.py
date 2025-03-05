@@ -15,6 +15,7 @@ import requests
 import streamlit as st
 from branca.colormap import LinearColormap
 from streamlit_folium import st_folium
+os.environ['SHAPE_RESTORE_SHX'] = 'YES'
 
 from src.config import DATA_DIR
 from src.inference import fetch_next_hour_predictions, load_batch_of_features_from_store
