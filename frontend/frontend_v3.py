@@ -11,10 +11,7 @@ from branca.colormap import LinearColormap
 from streamlit_folium import st_folium
 from datetime import datetime
 import pytz
-import logging
-
-# Set up logging for debugging
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+import plotly.graph_objs as go
 
 parent_dir = str(Path(__file__).parent.parent)
 sys.path.append(parent_dir)
@@ -115,6 +112,33 @@ def load_shape_data_file(data_dir, url="https://d37ci6vzurychx.cloudfront.net/mi
         print("Shapefile successfully loaded.")
     return gdf
 
+# Custom CSS for beautification
+st.markdown("""
+    <style>
+    .main {
+        background-color: #f0f2f6;
+    }
+    .stApp {
+        max-width: 1200px;
+        margin: 0 auto;
+    }
+    h1 {
+        color: #1E3A8A;
+        font-size: 36px;
+        text-align: center;
+    }
+    h2 {
+        color: #2563EB;
+        font-size: 24px;
+    }
+    .stSelectbox {
+        background-color: #FFFFFF;
+        border-radius: 5px;
+        padding: 5px;
+    }
+    </style>
+""", unsafe_allow_html=True)
+
 # Get current time in EST for display
 current_date = pd.Timestamp.now(tz="Etc/UTC")
 current_date_est = convert_to_est(current_date)
@@ -172,11 +196,23 @@ with st.spinner(text="Plot predicted rides demand"):
         progress_bar.progress(4 / N_STEPS)
 
         st.dataframe(predictions.sort_values("predicted_demand", ascending=False).head(10))
-        top10 = (
-            predictions.sort_values("predicted_demand", ascending=False)
-            .head(10)["pickup_location_id"]
-            .to_list()
-        )
+
+        # Dropdown for location selection
+        locations = predictions['pickup_location_id'].unique()
+        selected_location = st.selectbox("Select a location:", locations)
+
+        # Plot line graph for selected location
+        location_data = predictions[predictions['pickup_location_id'] == selected_location]
+        fig = go.Figure()
+        fig.add_trace(go.Scatter(x=location_data['pickup_hour'], y=location_data['predicted_demand'],
+                                 mode='lines+markers', name='Predicted Demand'))
+        fig.update_layout(title=f"Predicted Demand for Location {selected_location}",
+                          xaxis_title="Pickup Hour",
+                          yaxis_title="Predicted Demand")
+        st.plotly_chart(fig, use_container_width=True)
+
+        # Plot time series for top 10 locations
+        top10 = predictions.sort_values("predicted_demand", ascending=False).head(10)["pickup_location_id"].to_list()
         for location_id in top10:
             fig = plot_prediction(
                 features=features[features["pickup_location_id"] == location_id],
