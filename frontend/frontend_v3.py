@@ -135,6 +135,7 @@ with st.spinner(text="Fetching batch of inference data"):
     features = load_batch_of_features_from_store(current_date)
     if 'pickup_hour' in features.columns:
         features['pickup_hour'] = features['pickup_hour'].apply(convert_to_est)
+        features['pickup_hour'] = features['pickup_hour'].dt.strftime('%Y-%m-%d %H:%M:%S')
     st.sidebar.write("Inference features fetched from the store")
     progress_bar.progress(2 / N_STEPS)
 
@@ -142,6 +143,7 @@ with st.spinner(text="Fetching predictions"):
     predictions = fetch_next_hour_predictions()
     if 'pickup_hour' in predictions.columns:
         predictions['pickup_hour'] = predictions['pickup_hour'].apply(convert_to_est)
+        predictions['pickup_hour'] = predictions['pickup_hour'].dt.strftime('%Y-%m-%d %H:%M:%S')
     st.sidebar.write("Model was loaded from the registry")
     progress_bar.progress(3 / N_STEPS)
 
@@ -175,7 +177,6 @@ with st.spinner(text="Plot predicted rides demand"):
             .head(10)["pickup_location_id"]
             .to_list()
         )
-        # No time format here
         for location_id in top10:
             fig = plot_prediction(
                 features=features[features["pickup_location_id"] == location_id],
