@@ -249,30 +249,35 @@ with st.spinner(text="Plot predicted rides demand"):
 
         st.dataframe(filtered_predictions[["pickup_location_id", "predicted_demand"]]) #Table with all predictions, removed Zone
 
-        # The fix is here!
-        # Replace the new chart with your logic chart
         st.subheader("Time Series for Top Locations")
-        top10_location_ids = filtered_predictions.sort_values("predicted_demand", ascending=False).head(2)["pickup_location_id"].to_list()
-        # top10_location_ids = filtered_predictions.sort_values("predicted_demand", ascending=False).head(10)["pickup_location_id"].to_list()
-        if selected_location:
-            fig = plot_prediction(
-                features=filtered_features[filtered_features["pickup_location_id"] == selected_location],
-                prediction=filtered_predictions[filtered_predictions["pickup_location_id"] == selected_location],
-            )
-            st.plotly_chart(fig, theme="streamlit", use_container_width=True)
+
+        # Default chart: Time series for the top 2 locations
+        if not selected_location:
+            top2_location_ids = filtered_predictions.sort_values("predicted_demand", ascending=False).head(2)["pickup_location_id"].to_list()
+            for location_id in top2_location_ids:
+                location_data = filtered_predictions[filtered_predictions["pickup_location_id"] == location_id].copy()
+
+                fig = px.line(location_data, x='pickup_hour', y='predicted_demand',
+                              title=f"Pickup Hour: {location_data['pickup_hour'].iloc[-1]}, Location ID: {location_id}",
+                              labels={'pickup_hour': 'Time', 'predicted_demand': 'Ride Counts'})
+                fig.add_trace(go.Scatter(x=[location_data['pickup_hour'].iloc[-1]],
+                                         y=[location_data['predicted_demand'].iloc[-1]],
+                                         mode='markers', marker=dict(color='red', symbol='x', size=10),
+                                         name='Prediction'))
+
+                st.plotly_chart(fig, theme="streamlit", use_container_width=True)
         else:
-            #Display the time-series plot for the top 2 locations
-            for location_id in top10_location_ids:
-                # Check if location_id exists in both features and predictions
-                if (location_id in filtered_features["pickup_location_id"].values) and \
-                   (location_id in filtered_predictions["pickup_location_id"].values):
-                    fig = plot_prediction(
-                        features=filtered_features[filtered_features["pickup_location_id"] == location_id],
-                        prediction=filtered_predictions[filtered_predictions["pickup_location_id"] == location_id],
-                    )
-                    st.plotly_chart(fig, theme="streamlit", use_container_width=True)
-                else:
-                    st.warning(f"No data available for location ID: {location_id}")
+            # Time series plot for the selected location
+            location_data = filtered_predictions[filtered_predictions["pickup_location_id"] == selected_location].copy()
+            fig = px.line(location_data, x='pickup_hour', y='predicted_demand',
+                          title=f"Pickup Hour: {location_data['pickup_hour'].iloc[-1]}, Location ID: {selected_location}",
+                          labels={'pickup_hour': 'Time', 'predicted_demand': 'Ride Counts'})
+            fig.add_trace(go.Scatter(x=[location_data['pickup_hour'].iloc[-1]],
+                                     y=[location_data['predicted_demand'].iloc[-1]],
+                                     mode='markers', marker=dict(color='red', symbol='x', size=10),
+                                     name='Prediction'))
+
+            st.plotly_chart(fig, theme="streamlit", use_container_width=True)
 
         # Add name column for top 10 pickup locations
         top10 = filtered_predictions.sort_values("predicted_demand", ascending=False).head(10)
